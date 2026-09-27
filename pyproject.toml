@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "supernote-todo"
-version = "0.1.0"
+version = "0.2.0"
 description = "Supernote To-Do görevlerini Apple Reminders veya Microsoft To Do'ya aktarır"
 readme = "README.md"
 requires-python = ">=3.9"

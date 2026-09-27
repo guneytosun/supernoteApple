@@ -86,7 +86,7 @@ def parse_account(text: str, country: str = "90") -> tuple[str, Optional[int]]:
 
 def cmd_login_supernote(args, config) -> int:
     saved = config.get("supernote_account") or config.get("supernote_email") or ""
-    raw = args.account or _ask("Supernote e-posta veya cep telefonu", saved)
+    raw = args.account or _ask("Supernote hesabı (cep telefonu veya e-posta)", saved)
     if "@" in raw:
         account, country = parse_account(raw)
     else:
