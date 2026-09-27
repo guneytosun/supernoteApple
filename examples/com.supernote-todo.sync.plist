@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS: every 15 minutes, run a sync in the background.
+  1. Replace /Users/KULLANICI/... with the output of `which supernote-todo`.
+  2. cp examples/com.supernote-todo.sync.plist ~/Library/LaunchAgents/
+  3. launchctl load ~/Library/LaunchAgents/com.supernote-todo.sync.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.supernote-todo.sync</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/KULLANICI/.venvs/supernote-todo/bin/supernote-todo</string>
+        <string>sync</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>900</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/supernote-todo.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/supernote-todo.log</string>
+</dict>
+</plist>
