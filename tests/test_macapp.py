@@ -41,6 +41,17 @@ def test_install_builds_signs_and_starts(tmp_path, monkeypatch):
     keys = {c[2] for c in calls if c[0] == "plutil"}
     assert {"NSRemindersFullAccessUsageDescription", "LSUIElement", "CFBundleIdentifier"} <= keys
     assert app == tmp_path / "Applications" / "Supernote ToDo.app"
+    compiled = [c[2] for c in calls if c[0] == "osacompile"]
+    assert compiled == [str(app), str(tmp_path / "Applications" / "Supernote Bildirim.app")]
+    ids = [c[4] for c in calls if c[0] == "plutil" and c[2] == "CFBundleIdentifier"]
+    assert ids == ["com.supernote-todo.agent", "com.supernote-todo.notifier"]
+
+
+def test_notifier_source_opens_reminders_when_clicked(tmp_path):
+    src = macapp.notifier_source(tmp_path / "notification.txt")
+    assert src.isascii()
+    assert 'tell application "Reminders" to activate' in src
+    assert "display notification msg" in src
 
 
 def test_install_stops_on_failure(tmp_path, monkeypatch):

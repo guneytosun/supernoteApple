@@ -77,8 +77,10 @@ supernote-todo watch              # sürekli çalış, değişiklikleri hemen ak
   özet bildirim). Kapatmak için `setup`'ta bildirim sorusuna `h` de. İlk
   bildirimde macOS "Script Editor" için bildirim izni isteyebilir; izin ver.
 - Supernote'tan yeni görev gelince Mac'te bildirim çıkar (birden fazlaysa tek
-  özet bildirim). Kapatmak için `setup`'ta bildirim sorusuna `h` de. İlk
-  bildirimde macOS bildirim izni isteyebilir; izin ver.
+  özet bildirim); bildirime tıklayınca Anımsatıcılar açılır. Bildirimleri
+  `install-app`'in kurduğu küçük "Supernote Bildirim" uygulaması gösterir;
+  ilk bildirimde macOS onun için bildirim izni isteyebilir, izin ver.
+  Kapatmak için `setup`'ta bildirim sorusuna `h` de.
 - Güvenlik ağı olarak her 10 dakikada bir tam senkronizasyon yapılır. Hata
   olursa bekleme süresi giderek uzar. Supernote oturumu dolduysa
   `login-supernote` ile tekrar giriş yaptığın anda devam eder.

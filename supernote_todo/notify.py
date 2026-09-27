@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from typing import Callable, Sequence
+from pathlib import Path
+from typing import Callable, Optional, Sequence
+
+from . import macapp
 
 TITLE = "Supernote"
 #: How many titles to spell out before summarising the rest.
@@ -26,14 +29,29 @@ def message_for(titles: Sequence[str]) -> str:
 
 
 def notify_new_tasks(titles: Sequence[str],
-                     run: Callable[..., object] = subprocess.run) -> None:
+                     run: Callable[..., object] = subprocess.run,
+                     notifier: Optional[Path] = None,
+                     message_file: Optional[Path] = None) -> None:
     """Show one notification for the tasks just created. Never raises: a
-    notification that cannot be shown must not stop a sync."""
+    notification that cannot be shown must not stop a sync.
+
+    Goes through the notifier applet `install-app` builds, so it is shown as
+    "Supernote Bildirim" and a click opens Reminders; without the applet it
+    falls back to osascript, which macOS shows as Script Editor.
+    """
     if not titles or (sys.platform != "darwin" and run is subprocess.run):
         return
-    script = (f"display notification {_quote(message_for(titles))} "
-              f"with title {_quote(TITLE)} subtitle {_quote('Anımsatıcılar')}")
+    message = message_for(titles)
+    notifier = notifier or macapp.notifier_path()
+    message_file = message_file or macapp.message_path()
     try:
-        run(["osascript", "-e", script], capture_output=True, timeout=10)
+        if notifier.exists():
+            message_file.parent.mkdir(parents=True, exist_ok=True)
+            message_file.write_text(message, encoding="utf-8")
+            run(["open", "-g", str(notifier)], capture_output=True, timeout=10)
+        else:
+            script = (f"display notification {_quote(message)} "
+                      f"with title {_quote(TITLE)} subtitle {_quote('Anımsatıcılar')}")
+            run(["osascript", "-e", script], capture_output=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         pass
