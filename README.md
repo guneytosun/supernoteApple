@@ -52,7 +52,7 @@ komutlarını tekrar çalıştır. `supernote-todo`, `PATH` ayarlanmadan önce
 
 ```bash
 supernote-todo setup              # liste düzeni ve seçenekler (hedef: reminders)
-supernote-todo login-supernote    # e-posta + şifre; gerekirse e-postana gelen kod
+supernote-todo login-supernote    # e-posta veya cep telefonu + şifre; gerekirse gelen kod
 supernote-todo status             # iki taraftaki listeleri gösterir
 supernote-todo sync --dry-run     # ne yapılacağını gör, hiçbir şey değişmez
 supernote-todo sync               # bir kez aktar
@@ -75,6 +75,13 @@ supernote-todo watch              # sürekli çalış, değişiklikleri hemen ak
 - Güvenlik ağı olarak her 10 dakikada bir tam senkronizasyon yapılır. Hata
   olursa bekleme süresi giderek uzar; Supernote oturumu dolduysa 30 dakikada
   bir tekrar denenir.
+
+`login-supernote` hem e-postayla hem telefonla açılmış hesapları destekler.
+Telefonla giriyorsan numarayı ülke kodu olmadan yaz (ör. `5321234567`;
+`0532 123 45 67` de olur); ardından ülke kodunu sorar (varsayılan `90`).
+Supernote yeni bir cihazdan girişte doğrulama kodu isteyebilir: e-posta
+hesaplarında e-postayla, telefon hesaplarında SMS ile gelir. Şifre hiçbir
+yere kaydedilmez; yalnızca 30 gün geçerli oturum anahtarı saklanır.
 
 Terminal'den ilk çalıştırmada macOS, Terminal'in Anımsatıcılar'a erişmesi için
 izin ister; **Tam Erişim**'e izin ver. Yanlışlıkla reddettiysen: Sistem

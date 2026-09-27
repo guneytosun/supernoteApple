@@ -1,3 +1,4 @@
+import hashlib
 import pytest
 
 from supernote_todo.supernote import (BASE_URL, SupernoteAuthError, SupernoteClient,
@@ -80,3 +81,49 @@ def test_complete_sends_full_row_with_last_modified():
     method, path, payload, _ = session.sent[-1]
     assert method == "PUT" and payload["status"] == "completed"
     assert payload["sort"] == 7 and payload["lastModified"] > 0
+
+
+def test_login_with_phone_and_sms_code():
+    session = FakeSession({
+        "/official/user/query/random/code": {"randomCode": "nonce", "timestamp": 123},
+        "/official/user/account/login/new": {"success": False, "errorCode": "E1760"},
+        "/user/validcode/pre-auth": {"token": "aa-bb-cc-1"},
+        "/user/sms/validcode/send": {"success": True},
+        "/official/user/sms/login": {"token": "jwt"},
+    })
+    asked = []
+    client = SupernoteClient(session=session)
+    token = client.login("5321234567", "pw", lambda where: asked.append(where) or "1234",
+                         country_code=90)
+    assert token == "jwt" and asked == ["+90 5321234567"]
+    sent = {path: body for _, path, body, _ in session.sent}
+    assert sent["/official/user/query/random/code"] == {"countryCode": "90", "account": "5321234567"}
+    assert sent["/official/user/account/login/new"]["countryCode"] == 90
+    assert sent["/user/validcode/pre-auth"] == {"account": "905321234567"}
+    sms = sent["/user/sms/validcode/send"]
+    assert sms["telephone"] == "5321234567" and sms["nationcode"] == 90
+    assert sms["sign"] == hashlib.sha256(b"905321234567bb").hexdigest()
+    final = sent["/official/user/sms/login"]
+    assert final["telephone"] == "5321234567" and final["countryCode"] == 90
+    assert final["validCodeKey"] == "90-5321234567_validCode"
+    assert "email" not in final
+
+
+def test_phone_login_without_verification():
+    session = FakeSession({
+        "/official/user/query/random/code": {"randomCode": "nonce", "timestamp": 1},
+        "/official/user/account/login/new": {"token": "jwt"},
+    })
+    assert SupernoteClient(session=session).login(
+        "5321234567", "pw", lambda _: "", country_code=90) == "jwt"
+
+
+def test_error_message_carries_server_code():
+    session = FakeSession({
+        "/official/user/query/random/code": {"randomCode": "nonce", "timestamp": 1},
+        "/official/user/account/login/new": {"success": False, "errorCode": "E0018",
+                                             "errorMsg": "Account or password error"},
+    })
+    with pytest.raises(SupernoteAuthError, match="E0018"):
+        SupernoteClient(session=session).login("5321234567", "pw", lambda _: "",
+                                               country_code=90)

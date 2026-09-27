@@ -6,6 +6,7 @@ import argparse
 import getpass
 import sys
 from datetime import datetime, timezone
+from typing import Optional
 
 from . import __version__
 from .config import (config_path, load_config, load_state, ms_cache_path,
@@ -66,17 +67,42 @@ def cmd_setup(args, config) -> int:
     return 0
 
 
+def parse_account(text: str, country: str = "90") -> tuple[str, Optional[int]]:
+    """"ad@ornek.com" -> (e-mail, None); "0532 123 45 67" -> ("5321234567", 90).
+
+    A leading "+<code>" overrides ``country``: "+90 532 123 45 67" works too.
+    """
+    text = text.strip()
+    if "@" in text:
+        return text, None
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if text.startswith("+") and digits.startswith(country):
+        digits = digits[len(country):]
+    digits = digits.lstrip("0")
+    if not digits:
+        raise ValueError("Geçerli bir e-posta veya telefon numarası girin.")
+    return digits, int(country)
+
+
 def cmd_login_supernote(args, config) -> int:
-    email = args.email or _ask("Supernote e-posta", config["supernote_email"])
+    saved = config.get("supernote_account") or config.get("supernote_email") or ""
+    raw = args.account or _ask("Supernote e-posta veya cep telefonu", saved)
+    if "@" in raw:
+        account, country = parse_account(raw)
+    else:
+        code = args.country or _ask("Ülke kodu", str(config.get("supernote_country") or 90))
+        account, country = parse_account(raw, code.lstrip("+"))
     password = getpass.getpass("Supernote şifre: ")
     client = SupernoteClient()
 
-    def ask_code(address: str) -> str:
-        print(f"Supernote {address} adresine bir doğrulama kodu gönderdi.")
+    def ask_code(where: str) -> str:
+        print(f"Supernote {where} için bir doğrulama kodu gönderdi.")
         return _ask("Doğrulama kodu")
 
-    token = client.login(email, password, ask_code)
-    config["supernote_email"] = email
+    token = client.login(account, password, ask_code, country_code=country)
+    config["supernote_account"] = account
+    config["supernote_country"] = country
+    config.pop("supernote_email", None)
     config["supernote_token"] = token
     save_config(config)
     expires = token_expiry(token)
@@ -93,6 +119,12 @@ def cmd_login_microsoft(args, config) -> int:
     return 0
 
 
+def _who(config: dict) -> str:
+    account = config.get("supernote_account") or config.get("supernote_email") or ""
+    country = config.get("supernote_country")
+    return f"+{country} {account}" if country else account
+
+
 def cmd_status(args, config) -> int:
     print(f"Ayar dosyası: {config_path()}")
     token = config.get("supernote_token")
@@ -104,9 +136,9 @@ def cmd_status(args, config) -> int:
             print("Supernote: oturum süresi dolmuş")
         elif expires:
             days = (expires - datetime.now(timezone.utc)).days
-            print(f"Supernote: {config['supernote_email']} (oturum {days} gün daha geçerli)")
+            print(f"Supernote: {_who(config)} (oturum {days} gün daha geçerli)")
         else:
-            print(f"Supernote: {config['supernote_email']}")
+            print(f"Supernote: {_who(config)}")
 
     sn = SupernoteClient(token)
     if token:
@@ -203,7 +235,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("setup", help="Ayarları etkileşimli olarak yapılandır").set_defaults(func=cmd_setup)
 
     p = sub.add_parser("login-supernote", help="Supernote Cloud'a giriş yap")
-    p.add_argument("--email")
+    p.add_argument("--account", "--email", dest="account",
+                   help="E-posta veya cep telefonu (ör. 5321234567)")
+    p.add_argument("--country", help="Telefon için ülke kodu (varsayılan 90)")
     p.set_defaults(func=cmd_login_supernote)
 
     sub.add_parser("login-microsoft", help="Microsoft hesabına giriş yap (yalnızca Microsoft hedefi)") \
@@ -248,6 +282,9 @@ def main(argv=None) -> int:
     try:
         return args.func(args, config)
     except (SupernoteError, TargetError) as exc:
+        print(f"Hata: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
         print(f"Hata: {exc}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:

@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import Any
 
 DEFAULTS: dict[str, Any] = {
-    # Supernote account e-mail, remembered after the first login.
-    "supernote_email": "",
+    # Supernote account (e-mail, or phone number without country code) and,
+    # for phone accounts, the country code -- remembered after the first login.
+    "supernote_account": "",
+    "supernote_country": None,
     # Supernote Cloud session token (a JWT, valid for ~30 days).
     "supernote_token": "",
     # Where tasks go: "reminders" (Apple Reminders, macOS) or "microsoft"
