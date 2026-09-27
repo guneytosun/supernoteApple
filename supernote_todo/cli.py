@@ -195,9 +195,11 @@ def cmd_watch(args, config) -> int:
         save_state(config["target"], state)
         return stats
 
-    def reload_token():
+    def reload_token() -> bool:
         # A `login-supernote` run while this keeps going takes effect at once.
-        sn.token = load_config().get("supernote_token") or ""
+        token = load_config().get("supernote_token") or ""
+        changed, sn.token = token != sn.token, token
+        return changed
 
     Watcher(sn, target, run_pass, interval=args.interval, log=_log,
             before_poll=reload_token).run()

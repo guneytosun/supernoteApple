@@ -40,7 +40,7 @@ class Watcher:
                  run_pass: Callable[[], Stats], interval: float = 30.0,
                  full_every: float = 600.0, log: Callable[[str], None] = print,
                  clock: Callable[[], float] = time.monotonic,
-                 before_poll: Optional[Callable[[], None]] = None):
+                 before_poll: Optional[Callable[[], bool]] = None):
         self.sn = supernote
         self.target = target
         self.run_pass = run_pass
@@ -56,6 +56,7 @@ class Watcher:
         self._next_poll = 0.0
         self._next_full = 0.0
         self._blocked_until = 0.0
+        self._auth_blocked = False
         self._backoff = 0.0
         self.passes = 0
         self.live = target.on_change(self._target_changed)
@@ -67,7 +68,8 @@ class Watcher:
         self._changed_at = self.clock()
 
     def _fail(self, exc: Exception) -> None:
-        if isinstance(exc, SupernoteAuthError):
+        self._auth_blocked = isinstance(exc, SupernoteAuthError)
+        if self._auth_blocked:
             delay = AUTH_RETRY
         else:
             delay = self._backoff = min(MAX_BACKOFF, max(self.interval, self._backoff * 2))
@@ -78,7 +80,13 @@ class Watcher:
         """One tick of the loop; ``run`` calls it once a second."""
         now = self.clock()
         if now < self._blocked_until:
-            return
+            # Waiting out an expired session: a new `login-supernote` should
+            # not have to wait for the retry. ``before_poll`` reloads the
+            # token and says whether it changed.
+            if not (self._auth_blocked and self.before_poll and self.before_poll()):
+                return
+            self._blocked_until = self._next_poll = 0.0
+            self._auth_blocked = False
 
         if now >= self._next_poll:
             self._next_poll = now + self.interval

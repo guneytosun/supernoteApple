@@ -108,3 +108,17 @@ def test_new_login_is_picked_up_without_restart():
     sn.error = None  # the user logged in again
     tick(watcher, clock, 1900)
     assert len(tokens) >= 2 and watcher.passes == 1
+
+
+def test_new_login_ends_auth_wait_immediately():
+    clock, sn = Clock(), FakeSupernote()
+    sn.error = SupernoteAuthError("expired")
+    fresh = []
+    watcher = Watcher(sn, LiveTarget(), lambda: Stats(), log=lambda _: None, clock=clock,
+                      before_poll=lambda: bool(fresh))
+    tick(watcher, clock, 5)
+    assert sn.polls == 1
+    sn.error = None
+    fresh.append("new token")  # the user ran login-supernote
+    tick(watcher, clock, 2)
+    assert sn.polls == 2 and watcher.passes == 1
