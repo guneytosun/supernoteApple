@@ -73,9 +73,15 @@ supernote-todo watch              # sürekli çalış, değişiklikleri hemen ak
   Toplam gecikme = tabletin buluta senkronize etme süresi + en fazla 30 sn.
   Tablette görev ekledikten sonra hemen görmek istersen tabletten elle
   senkronize et.
+- Supernote'tan yeni görev gelince Mac'te bildirim çıkar (birden fazlaysa tek
+  özet bildirim). Kapatmak için `setup`'ta bildirim sorusuna `h` de. İlk
+  bildirimde macOS "Script Editor" için bildirim izni isteyebilir; izin ver.
+- Supernote'tan yeni görev gelince Mac'te bildirim çıkar (birden fazlaysa tek
+  özet bildirim). Kapatmak için `setup`'ta bildirim sorusuna `h` de. İlk
+  bildirimde macOS bildirim izni isteyebilir; izin ver.
 - Güvenlik ağı olarak her 10 dakikada bir tam senkronizasyon yapılır. Hata
-  olursa bekleme süresi giderek uzar; Supernote oturumu dolduysa 30 dakikada
-  bir tekrar denenir.
+  olursa bekleme süresi giderek uzar. Supernote oturumu dolduysa
+  `login-supernote` ile tekrar giriş yaptığın anda devam eder.
 
 `login-supernote` hem e-postayla hem telefonla açılmış hesapları destekler.
 Telefonla giriyorsan numarayı ülke kodu olmadan yaz (ör. `5321234567`;
@@ -111,6 +117,7 @@ Ayarları → Gizlilik ve Güvenlik → Anımsatıcılar → Terminal'i aç. Ark
 | `include_completed` | `--include-completed` | kapalı | Supernote'ta zaten tamamlanmış görevleri de aktar. |
 | `complete_back` | `--complete-back` | kapalı | Hedefte tamamlanan görevi Supernote'ta da tamamla. |
 | `delete_removed` | `--delete-removed` | kapalı | Supernote'tan silinen görevi hedeften de sil. |
+| `notify` | – | açık | Yeni görev gelince macOS bildirimi göster. |
 
 ## Arka planda sürekli çalıştırma (macOS)
 

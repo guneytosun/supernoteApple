@@ -35,6 +35,8 @@ DEFAULTS: dict[str, Any] = {
     "complete_back": False,
     # Tasks deleted on Supernote are deleted from Microsoft To Do as well.
     "delete_removed": False,
+    # Show a macOS notification when new tasks arrive from Supernote.
+    "notify": True,
 }
 
 

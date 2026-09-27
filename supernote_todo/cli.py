@@ -12,6 +12,7 @@ from . import __version__
 from .config import (config_path, load_config, load_state, ms_cache_path,
                      save_config, save_state)
 from .mstodo import MicrosoftAuth, MicrosoftTarget, ToDoClient
+from .notify import notify_new_tasks
 from .supernote import SupernoteClient, SupernoteError, token_expiry
 from .sync import Syncer
 from .watch import Watcher
@@ -62,6 +63,9 @@ def cmd_setup(args, config) -> int:
     config["delete_removed"] = _yes_no(
         "Supernote'tan silinen görevler hedeften de silinsin mi?",
         config["delete_removed"])
+    config["notify"] = _yes_no(
+        "Supernote'tan yeni görev gelince Mac'te bildirim gösterilsin mi?",
+        config["notify"])
     save_config(config)
     print(f"\nKaydedildi: {config_path()}")
     return 0
@@ -171,6 +175,11 @@ def _apply_flags(args, config) -> None:
             config[key] = True
 
 
+def _notify(config: dict, stats) -> None:
+    if config.get("notify", True):
+        notify_new_tasks(stats.created_titles)
+
+
 def cmd_sync(args, config) -> int:
     _apply_flags(args, config)
     state = load_state(config["target"])
@@ -179,6 +188,7 @@ def cmd_sync(args, config) -> int:
     stats = syncer.run()
     if not args.dry_run:
         save_state(config["target"], state)
+        _notify(config, stats)
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     print(f"[{stamp}] {'(deneme) ' if args.dry_run else ''}{stats.summary()}")
     return 1 if stats.errors else 0
@@ -193,6 +203,7 @@ def cmd_watch(args, config) -> int:
     def run_pass():
         stats = Syncer(sn, target, config, state, log=_log).run()
         save_state(config["target"], state)
+        _notify(config, stats)
         return stats
 
     def reload_token() -> bool:

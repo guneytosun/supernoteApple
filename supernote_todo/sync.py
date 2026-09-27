@@ -21,6 +21,8 @@ SINGLE_KEY = "__single__"
 @dataclass
 class Stats:
     created: int = 0
+    #: Titles of the tasks created in this pass, for the notification.
+    created_titles: list = field(default_factory=list)
     updated: int = 0
     completed_back: int = 0
     deleted: int = 0
@@ -150,6 +152,7 @@ class Syncer:
             if not self.dry_run:
                 task_id = self.target.create(list_id, task.id, want)
                 self.state["tasks"][task.id] = {"list": list_id, "id": task_id, "synced": want}
+                self.stats.created_titles.append(want["title"])
             self.stats.created += 1
             return
 

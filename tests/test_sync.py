@@ -220,3 +220,10 @@ def test_helpers():
     payload = base64.urlsafe_b64encode(json.dumps({"exp": 1893456000}).encode()).decode().rstrip("=")
     assert token_expiry(f"x.{payload}.y").year == 2030
     assert token_expiry("garbage") is None
+
+
+def test_created_titles_collected_for_notification():
+    sn = FakeSupernote([row("a", "Bir"), row("b", "İki")])
+    todo, state = FakeToDo(), fresh_state()
+    assert run(sn, todo, state).created_titles == ["Bir", "İki"]
+    assert run(sn, todo, state).created_titles == []
