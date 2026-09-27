@@ -18,7 +18,8 @@ import time
 from datetime import date
 from typing import Optional
 
-from .target import Target, TargetAuthError, TargetError, TargetList, TargetNotFound
+from .target import (Target, TargetAuthError, TargetError, TargetList, TargetNotFound,
+                     alarm_moment)
 
 URL_PREFIX = "supernote-todo://task/"
 
@@ -147,6 +148,15 @@ class RemindersTarget(Target):
             reminder.setDueDateComponents_(self._components(changes["due"]))
         if "completed" in changes:
             reminder.setCompleted_(bool(changes["completed"]))
+        if "alarm" in changes:
+            # Replaces any alarm on the reminder: this only happens when the
+            # due date (or the alarm time setting) changed.
+            moment = alarm_moment(changes["alarm"])
+            if moment is None:
+                reminder.setAlarms_(None)
+            else:
+                when = self.ns.NSDate.dateWithTimeIntervalSince1970_(moment.timestamp())
+                reminder.setAlarms_([self.ek.EKAlarm.alarmWithAbsoluteDate_(when)])
 
     def _components(self, value: Optional[str]):
         if not value:

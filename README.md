@@ -117,6 +117,7 @@ Ayarları → Gizlilik ve Güvenlik → Anımsatıcılar → Terminal'i aç. Ark
 | `include_completed` | `--include-completed` | kapalı | Supernote'ta zaten tamamlanmış görevleri de aktar. |
 | `complete_back` | `--complete-back` | kapalı | Hedefte tamamlanan görevi Supernote'ta da tamamla. |
 | `delete_removed` | `--delete-removed` | kapalı | Supernote'tan silinen görevi hedeften de sil. |
+| `alarm_time` | – | `09:00` | Bitiş tarihi olan açık görevlere o gün bu saatte alarm kurar; iPhone'da bildirim çıkar. Geçmiş tarihli görevlere alarm kurulmaz. Kapatmak için `setup`'ta `-` gir. |
 | `notify` | – | açık | Yeni görev gelince macOS bildirimi göster. |
 
 ## Arka planda sürekli çalıştırma (macOS)

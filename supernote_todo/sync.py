@@ -47,8 +47,24 @@ class Stats:
         return ", ".join(parts)
 
 
-def desired_fields(task: SupernoteTask) -> dict:
-    """What the copy of this task should look like on the other side."""
+def valid_alarm_time(value: object) -> Optional[str]:
+    """"9:05" -> "09:05"; None for anything that is not a time of day."""
+    text = str(value or "").strip()
+    if ":" not in text:
+        return None
+    hours, _, minutes = text.partition(":")
+    if not (hours.isdigit() and minutes.isdigit()):
+        return None
+    h, m = int(hours), int(minutes)
+    return f"{h:02d}:{m:02d}" if 0 <= h < 24 and 0 <= m < 60 else None
+
+
+def desired_fields(task: SupernoteTask, alarm_time: Optional[str] = None) -> dict:
+    """What the copy of this task should look like on the other side.
+
+    ``alarm_time`` ("HH:MM") adds an alarm at that time on the due date, so
+    the phone notifies; open tasks with a due date only.
+    """
     body = task.detail
     if task.source:
         body = f"{body}\n\nNot: {task.source}" if body else f"Not: {task.source}"
@@ -57,6 +73,8 @@ def desired_fields(task: SupernoteTask) -> dict:
         "body": body,
         "due": task.due.isoformat() if task.due else None,
         "completed": task.completed,
+        "alarm": (f"{task.due.isoformat()}T{alarm_time}"
+                  if alarm_time and task.due and not task.completed else None),
     }
 
 
@@ -140,7 +158,7 @@ class Syncer:
         return self.stats
 
     def _sync_task(self, task: SupernoteTask, sn_names: dict[str, str]) -> None:
-        want = desired_fields(task)
+        want = desired_fields(task, valid_alarm_time(self.config.get("alarm_time")))
         record = self.state["tasks"].get(task.id)
 
         if record is None:

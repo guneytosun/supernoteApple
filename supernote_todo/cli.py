@@ -14,7 +14,7 @@ from .config import (config_path, load_config, load_state, ms_cache_path,
 from .mstodo import MicrosoftAuth, MicrosoftTarget, ToDoClient
 from .notify import notify_new_tasks
 from .supernote import SupernoteClient, SupernoteError, token_expiry
-from .sync import Syncer
+from .sync import Syncer, valid_alarm_time
 from .watch import Watcher
 from .target import Target, TargetError
 
@@ -63,6 +63,16 @@ def cmd_setup(args, config) -> int:
     config["delete_removed"] = _yes_no(
         "Supernote'tan silinen görevler hedeften de silinsin mi?",
         config["delete_removed"])
+    while True:
+        answer = _ask("Tarihli görevler için hatırlatma saati (SS:DD, kapatmak için -)",
+                      config.get("alarm_time") or "-")
+        if answer.strip() == "-":
+            config["alarm_time"] = ""
+            break
+        if valid_alarm_time(answer):
+            config["alarm_time"] = valid_alarm_time(answer)
+            break
+        print("Saat SS:DD biçiminde olmalı, ör. 09:00")
     config["notify"] = _yes_no(
         "Supernote'tan yeni görev gelince Mac'te bildirim gösterilsin mi?",
         config["notify"])

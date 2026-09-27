@@ -35,6 +35,9 @@ DEFAULTS: dict[str, Any] = {
     "complete_back": False,
     # Tasks deleted on Supernote are deleted from Microsoft To Do as well.
     "delete_removed": False,
+    # Alarm time ("HH:MM") on the due date of open tasks, so the phone
+    # notifies; "" turns alarms off.
+    "alarm_time": "09:00",
     # Show a macOS notification when new tasks arrive from Supernote.
     "notify": True,
 }

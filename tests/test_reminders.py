@@ -85,10 +85,20 @@ class EKReminder(Obj):
     def URL(self): return self._url
     def setDueDateComponents_(self, v): self._due = v
     def setCompleted_(self, v): self._completed = v
+    def setAlarms_(self, v): self._alarms = list(v) if v else []
+    def alarms(self): return getattr(self, "_alarms", [])
     def isCompleted(self): return self._completed
     def setCalendar_(self, v): self._calendar = v
     def calendar(self): return self._calendar
     def calendarItemIdentifier(self): return self._id
+
+
+class EKAlarm(Obj):
+    @classmethod
+    def alarmWithAbsoluteDate_(cls, when):
+        alarm = cls()
+        alarm.when = when
+        return alarm
 
 
 class EKEventStore(Obj):
@@ -159,12 +169,13 @@ class NSNotificationCenter:
 
 
 EventKit = types.SimpleNamespace(
-    EKEventStore=EKEventStore, EKCalendar=EKCalendar, EKReminder=EKReminder,
+    EKEventStore=EKEventStore, EKCalendar=EKCalendar, EKReminder=EKReminder, EKAlarm=EKAlarm,
     EKEntityTypeReminder=1, EKEventStoreChangedNotification="EKEventStoreChangedNotification")
 Foundation = types.SimpleNamespace(
     NSURL=NSURL, NSDateComponents=NSDateComponents, NSRunLoop=NSRunLoop,
     NSNotificationCenter=NSNotificationCenter,
-    NSDate=types.SimpleNamespace(dateWithTimeIntervalSinceNow_=lambda s: s),
+    NSDate=types.SimpleNamespace(dateWithTimeIntervalSinceNow_=lambda s: s,
+                                 dateWithTimeIntervalSince1970_=lambda s: ("epoch", s)),
     NSCalendar=types.SimpleNamespace(currentCalendar=lambda: "gregorian"))
 
 
@@ -280,3 +291,40 @@ def test_refresh_sees_changes_made_elsewhere():
     sn.rows[0]["title"] = "Bir (değişti)"
     run(target, sn, state)
     assert state["tasks"]["a"]["gone"] is True
+
+
+def test_alarm_on_due_date_for_open_future_tasks():
+    from datetime import date, timedelta
+    target = RemindersTarget(EventKit, Foundation)
+    soon = datetime.combine(date.today() + timedelta(days=3), datetime.min.time())
+    past = datetime.combine(date.today() - timedelta(days=3), datetime.min.time())
+    sn = FakeSupernote([
+        row("a", "Gelecek", dueTime=int(soon.timestamp() * 1000)),
+        row("b", "Geçmiş", dueTime=int(past.timestamp() * 1000)),
+        row("c", "Tarihsiz"),
+    ])
+    state = {"lists": {}, "tasks": {}}
+    Syncer(sn, target, dict(CONFIG, alarm_time="09:00"), state, log=lambda _: None).run()
+    by_title = {r.title(): r for r in target.store.saved}
+
+    (alarm,) = by_title["Gelecek"].alarms()
+    assert alarm.when == ("epoch", soon.replace(hour=9).timestamp())
+    assert by_title["Geçmiş"].alarms() == []   # would fire at once on the phone
+    assert by_title["Tarihsiz"].alarms() == []
+
+    # Completing the task drops its alarm.
+    sn.rows[0]["status"] = "completed"
+    Syncer(sn, target, dict(CONFIG, alarm_time="09:00"), state, log=lambda _: None).run()
+    assert by_title["Gelecek"].alarms() == []
+
+
+def test_turning_alarms_on_updates_existing_tasks():
+    from datetime import date, timedelta
+    target = RemindersTarget(EventKit, Foundation)
+    soon = datetime.combine(date.today() + timedelta(days=3), datetime.min.time())
+    sn = FakeSupernote([row("a", "Gelecek", dueTime=int(soon.timestamp() * 1000))])
+    state = {"lists": {}, "tasks": {}}
+    Syncer(sn, target, dict(CONFIG), state, log=lambda _: None).run()
+    assert target.store.saved[0].alarms() == []
+    stats = Syncer(sn, target, dict(CONFIG, alarm_time="08:30"), state, log=lambda _: None).run()
+    assert stats.updated == 1 and len(target.store.saved[0].alarms()) == 1

@@ -2,7 +2,8 @@
 
 The sync engine speaks in neutral task fields::
 
-    {"title": str, "body": str, "due": "YYYY-MM-DD" | None, "completed": bool}
+    {"title": str, "body": str, "due": "YYYY-MM-DD" | None, "completed": bool,
+     "alarm": "YYYY-MM-DDTHH:MM" (local time) | None}
 
 and each target translates them into its own model. A target keeps a link from
 every task it creates back to the Supernote task id, so a lost state file can
@@ -13,9 +14,20 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Callable, Optional
 
-FIELDS = ("title", "body", "due", "completed")
+FIELDS = ("title", "body", "due", "completed", "alarm")
+
+
+def alarm_moment(value: Optional[str]) -> Optional[datetime]:
+    """The alarm as a local datetime, or None when there is none or it has
+    already passed -- an alarm set in the past would go off the moment it
+    syncs to the phone, which for an old task is only noise."""
+    if not value:
+        return None
+    moment = datetime.fromisoformat(value)
+    return moment if moment > datetime.now() else None
 
 
 class TargetError(Exception):

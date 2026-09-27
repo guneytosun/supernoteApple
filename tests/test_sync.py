@@ -227,3 +227,21 @@ def test_created_titles_collected_for_notification():
     todo, state = FakeToDo(), fresh_state()
     assert run(sn, todo, state).created_titles == ["Bir", "İki"]
     assert run(sn, todo, state).created_titles == []
+
+
+def test_microsoft_reminder_fields():
+    from datetime import date, timedelta
+    from supernote_todo.mstodo import graph_payload
+    day = date.today() + timedelta(days=2)
+    on = graph_payload({"alarm": f"{day.isoformat()}T09:00"})
+    assert on["isReminderOn"] is True and on["reminderDateTime"]["timeZone"] == "UTC"
+    assert graph_payload({"alarm": None}) == {"isReminderOn": False}
+    assert graph_payload({"alarm": "2000-01-01T09:00"}) == {"isReminderOn": False}
+
+
+def test_valid_alarm_time():
+    from supernote_todo.sync import valid_alarm_time
+    assert valid_alarm_time("9:05") == "09:05"
+    assert valid_alarm_time("09:00") == "09:00"
+    for bad in ("", None, "25:00", "9", "ab:cd", "-"):
+        assert valid_alarm_time(bad) is None

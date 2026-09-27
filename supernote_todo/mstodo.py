@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from datetime import date
+from datetime import date, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -11,7 +11,8 @@ import msal
 import requests
 
 from .config import write_private
-from .target import Target, TargetAuthError, TargetError, TargetList, TargetNotFound
+from .target import (Target, TargetAuthError, TargetError, TargetList, TargetNotFound,
+                     alarm_moment)
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 SCOPES = ["Tasks.ReadWrite"]
@@ -149,6 +150,13 @@ def graph_payload(changes: dict) -> dict:
         payload["dueDateTime"] = due_field(changes["due"])
     if "completed" in changes:
         payload["status"] = "completed" if changes["completed"] else "notStarted"
+    if "alarm" in changes:
+        moment = alarm_moment(changes["alarm"])
+        payload["isReminderOn"] = moment is not None
+        if moment is not None:
+            utc = moment.astimezone(timezone.utc)
+            payload["reminderDateTime"] = {
+                "dateTime": utc.strftime("%Y-%m-%dT%H:%M:%S.0000000"), "timeZone": "UTC"}
     return payload
 
 
