@@ -197,6 +197,25 @@ class RemindersTarget(Target):
             raise TargetError(f"Anımsatıcı silinemedi: {error}")
         self._by_sn_id().pop(sn_id, None)
 
+    def refresh(self) -> None:
+        self._index = None
+
+    def on_change(self, callback) -> bool:
+        """EventKit posts EKEventStoreChangedNotification on every change,
+        whether made in the Reminders app, on another device via iCloud, or by
+        this tool itself."""
+        self._observer = self.ns.NSNotificationCenter.defaultCenter() \
+            .addObserverForName_object_queue_usingBlock_(
+                self.ek.EKEventStoreChangedNotification, self.store, None,
+                lambda _note: callback())
+        return True
+
+    def idle(self, seconds: float) -> None:
+        # Notifications are delivered through the run loop, so spin it rather
+        # than sleeping.
+        self.ns.NSRunLoop.currentRunLoop().runUntilDate_(
+            self.ns.NSDate.dateWithTimeIntervalSinceNow_(seconds))
+
     def recover(self) -> dict[str, dict]:
         return {
             sn_id: {"list": str(r.calendar().calendarIdentifier()),

@@ -3,7 +3,6 @@ import hashlib
 import json
 from datetime import datetime
 
-import pytest
 
 from supernote_todo.mstodo import MicrosoftTarget, ToDoError, ToDoNotFound
 from supernote_todo.supernote import (SupernoteList, decode_source, parse_task,

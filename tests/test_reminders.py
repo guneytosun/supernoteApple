@@ -141,11 +141,25 @@ class NSRunLoop:
         pass
 
 
+class NSNotificationCenter:
+    observers = []
+
+    @classmethod
+    def defaultCenter(cls):
+        return cls()
+
+    def addObserverForName_object_queue_usingBlock_(self, name, obj, queue, block):
+        assert name == EventKit.EKEventStoreChangedNotification
+        NSNotificationCenter.observers.append(block)
+        return object()
+
+
 EventKit = types.SimpleNamespace(
     EKEventStore=EKEventStore, EKCalendar=EKCalendar, EKReminder=EKReminder,
-    EKEntityTypeReminder=1)
+    EKEntityTypeReminder=1, EKEventStoreChangedNotification="EKEventStoreChangedNotification")
 Foundation = types.SimpleNamespace(
     NSURL=NSURL, NSDateComponents=NSDateComponents, NSRunLoop=NSRunLoop,
+    NSNotificationCenter=NSNotificationCenter,
     NSDate=types.SimpleNamespace(dateWithTimeIntervalSinceNow_=lambda s: s),
     NSCalendar=types.SimpleNamespace(currentCalendar=lambda: "gregorian"))
 
@@ -241,3 +255,24 @@ def test_access_denied():
             RemindersTarget(EventKit, Foundation)
     finally:
         EKEventStore.granted = True
+
+
+def test_change_notifications_and_idle():
+    target = RemindersTarget(EventKit, Foundation)
+    fired = []
+    assert target.on_change(lambda: fired.append(1))
+    NSNotificationCenter.observers[-1](object())
+    assert fired == [1]
+    target.idle(0.5)  # spins the run loop instead of sleeping
+
+
+def test_refresh_sees_changes_made_elsewhere():
+    target = RemindersTarget(EventKit, Foundation)
+    sn = FakeSupernote([row("a", "Bir")])
+    state = {"lists": {}, "tasks": {}}
+    run(target, sn, state)
+    # Deleted in the Reminders app between passes: the next pass must notice.
+    target.store.saved.clear()
+    sn.rows[0]["title"] = "Bir (değişti)"
+    run(target, sn, state)
+    assert state["tasks"]["a"]["gone"] is True

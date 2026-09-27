@@ -37,9 +37,16 @@ hedefi](#microsoft-to-do-hedefi)); bu bir Azure uygulama kaydı gerektirir.
 git clone https://github.com/guneytosun/supernoteApple.git
 cd supernoteApple
 python3 -m venv ~/.venvs/supernote-todo
+~/.venvs/supernote-todo/bin/pip install --upgrade pip
 ~/.venvs/supernote-todo/bin/pip install .
-# Kolaylık için ~/.zshrc'ye: export PATH="$HOME/.venvs/supernote-todo/bin:$PATH"
+echo 'export PATH="$HOME/.venvs/supernote-todo/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 ```
+
+Kurulum hata verdiyse (`Failed to build pyobjc-core`) ya da `command not found:
+supernote-todo` görüyorsan: bu klasörde `git pull` yapıp yukarıdaki pip
+komutlarını tekrar çalıştır. `supernote-todo`, `PATH` ayarlanmadan önce
+`~/.venvs/supernote-todo/bin/supernote-todo` olarak da çağrılabilir.
 
 ## Kullanım
 
@@ -48,9 +55,26 @@ supernote-todo setup              # liste düzeni ve seçenekler (hedef: reminde
 supernote-todo login-supernote    # e-posta + şifre; gerekirse e-postana gelen kod
 supernote-todo status             # iki taraftaki listeleri gösterir
 supernote-todo sync --dry-run     # ne yapılacağını gör, hiçbir şey değişmez
-supernote-todo sync               # aktar
-supernote-todo sync --watch 15    # açık kaldıkça 15 dakikada bir
+supernote-todo sync               # bir kez aktar
+supernote-todo watch              # sürekli çalış, değişiklikleri hemen aktar
 ```
+
+### Anlık senkronizasyon (`watch`)
+
+`supernote-todo watch` açık kaldığı sürece:
+
+- **Anımsatıcılar → Supernote** (`complete_back` açıksa) anlıktır: macOS
+  Anımsatıcılar'daki her değişikliği (iPhone'dan iCloud ile gelenler dahil)
+  bildirir, araç ~2 saniye içinde senkronize eder.
+- **Supernote → Anımsatıcılar**: Supernote Cloud bildirim göndermediği için
+  30 saniyede bir tek bir küçük istekle yoklanır (`--interval` ile
+  değiştirilebilir); yalnızca bir şey değiştiyse tam senkronizasyon yapılır.
+  Toplam gecikme = tabletin buluta senkronize etme süresi + en fazla 30 sn.
+  Tablette görev ekledikten sonra hemen görmek istersen tabletten elle
+  senkronize et.
+- Güvenlik ağı olarak her 10 dakikada bir tam senkronizasyon yapılır. Hata
+  olursa bekleme süresi giderek uzar; Supernote oturumu dolduysa 30 dakikada
+  bir tekrar denenir.
 
 İlk çalıştırmada macOS, Terminal'in Anımsatıcılar'a erişmesi için izin ister;
 **Tam Erişim**'e izin ver. Yanlışlıkla reddettiysen: Sistem Ayarları →
@@ -81,10 +105,11 @@ Gizlilik ve Güvenlik → Anımsatıcılar → Terminal'i aç.
 
 ## Otomatik çalıştırma
 
-**macOS (launchd):** önce `supernote-todo sync`'i bir kez Terminal'den
+**macOS (launchd):** `watch` modunu oturum açtığında otomatik başlatır ve
+kapanırsa yeniden başlatır. Önce `supernote-todo sync`'i bir kez Terminal'den
 çalıştırıp her şeyin yolunda olduğunu gör. Sonra
-`examples/com.supernote-todo.sync.plist` dosyasındaki yolu
-`which supernote-todo` çıktısıyla değiştir ve:
+`examples/com.supernote-todo.sync.plist` dosyasındaki `KULLANICI` kısmını kendi
+kullanıcı adınla değiştir (`whoami`) ve:
 
 ```bash
 cp examples/com.supernote-todo.sync.plist ~/Library/LaunchAgents/
@@ -92,10 +117,12 @@ launchctl load ~/Library/LaunchAgents/com.supernote-todo.sync.plist
 tail -f /tmp/supernote-todo.log
 ```
 
+Durdurmak için `launchctl unload ~/Library/LaunchAgents/com.supernote-todo.sync.plist`.
+
 Arka planda çalışan süreç Terminal'in iznini devralmayabilir; macOS bu durumda
-Python için ayrıca Anımsatıcılar izni isteyebilir. Günlükte "erişim izni yok" hatası
-görürsen izni ver ya da bunun yerine bir Terminal penceresinde
-`supernote-todo sync --watch 15` açık bırak.
+Python için ayrıca Anımsatıcılar izni isteyebilir. Günlükte "erişim izni yok"
+hatası görürsen izni ver ya da bunun yerine bir Terminal penceresinde
+`supernote-todo watch` açık bırak.
 
 ## Nasıl çalışır / bilinmesi gerekenler
 

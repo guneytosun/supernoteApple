@@ -192,6 +192,9 @@ class MicrosoftTarget(Target):
     def delete(self, list_id: str, task_id: str, sn_id: str) -> None:
         self.client.delete_task(list_id, task_id)
 
+    def refresh(self) -> None:
+        self._tasks.clear()
+
     def recover(self) -> dict[str, dict]:
         found: dict[str, dict] = {}
         for ms_list in self.client.lists():

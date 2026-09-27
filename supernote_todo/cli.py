@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import getpass
 import sys
-import time
 from datetime import datetime, timezone
 
 from . import __version__
@@ -14,6 +13,7 @@ from .config import (config_path, load_config, load_state, ms_cache_path,
 from .mstodo import MicrosoftAuth, MicrosoftTarget, ToDoClient
 from .supernote import SupernoteClient, SupernoteError, token_expiry
 from .sync import Syncer
+from .watch import Watcher
 from .target import Target, TargetError
 
 
@@ -131,33 +131,44 @@ def cmd_status(args, config) -> int:
     return 0
 
 
-def run_sync(config, dry_run: bool) -> int:
-    state = load_state(config["target"])
-    syncer = Syncer(SupernoteClient(config["supernote_token"]), make_target(config),
-                    config, state, dry_run=dry_run)
-    stats = syncer.run()
-    if not dry_run:
-        save_state(config["target"], state)
-    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    print(f"[{stamp}] {'(deneme) ' if dry_run else ''}{stats.summary()}")
-    return 1 if stats.errors else 0
+def _apply_flags(args, config) -> None:
+    if getattr(args, "target", None):
+        config["target"] = args.target
+    for key in ("include_completed", "complete_back", "delete_removed"):
+        if getattr(args, key, False):
+            config[key] = True
 
 
 def cmd_sync(args, config) -> int:
-    if args.target:
-        config["target"] = args.target
-    for key in ("include_completed", "complete_back", "delete_removed"):
-        if getattr(args, key):
-            config[key] = True
-    if not args.watch:
-        return run_sync(config, args.dry_run)
-    print(f"Her {args.watch} dakikada bir senkronize ediliyor (durdurmak için Ctrl+C).")
-    while True:
-        try:
-            run_sync(config, args.dry_run)
-        except (SupernoteError, TargetError) as exc:
-            print(f"Hata: {exc}", file=sys.stderr)
-        time.sleep(args.watch * 60)
+    _apply_flags(args, config)
+    state = load_state(config["target"])
+    syncer = Syncer(SupernoteClient(config["supernote_token"]), make_target(config),
+                    config, state, dry_run=args.dry_run)
+    stats = syncer.run()
+    if not args.dry_run:
+        save_state(config["target"], state)
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    print(f"[{stamp}] {'(deneme) ' if args.dry_run else ''}{stats.summary()}")
+    return 1 if stats.errors else 0
+
+
+def cmd_watch(args, config) -> int:
+    _apply_flags(args, config)
+    sn = SupernoteClient(config["supernote_token"])
+    target = make_target(config)
+    state = load_state(config["target"])
+
+    def run_pass():
+        stats = Syncer(sn, target, config, state, log=_log).run()
+        save_state(config["target"], state)
+        return stats
+
+    Watcher(sn, target, run_pass, interval=args.interval, log=_log).run()
+    return 0
+
+
+def _log(message: str) -> None:
+    print(message, flush=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -182,7 +193,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--target", choices=["reminders", "microsoft"],
                    help="Bu çalıştırma için hedefi değiştir")
     p.add_argument("--dry-run", action="store_true", help="Hiçbir şeyi değiştirmeden ne yapılacağını göster")
-    p.add_argument("--watch", type=int, metavar="DAKIKA", help="Sürekli çalış, N dakikada bir senkronize et")
     p.add_argument("--include-completed", action="store_true",
                    help="Tamamlanmış görevleri de aktar")
     p.add_argument("--complete-back", action="store_true",
@@ -190,6 +200,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--delete-removed", action="store_true",
                    help="Supernote'tan silinenleri hedeften de sil")
     p.set_defaults(func=cmd_sync)
+
+    p = sub.add_parser("watch", help="Sürekli çalış, değişiklikleri hemen aktar")
+    p.add_argument("--target", choices=["reminders", "microsoft"],
+                   help="Bu çalıştırma için hedefi değiştir")
+    p.add_argument("--interval", type=int, default=30, metavar="SN",
+                   help="Supernote'u kaç saniyede bir yokla (varsayılan 30)")
+    p.add_argument("--include-completed", action="store_true",
+                   help="Tamamlanmış görevleri de aktar")
+    p.add_argument("--complete-back", action="store_true",
+                   help="Hedefte tamamlananları Supernote'ta da tamamla")
+    p.add_argument("--delete-removed", action="store_true",
+                   help="Supernote'tan silinenleri hedeften de sil")
+    p.set_defaults(func=cmd_watch)
     return parser
 
 

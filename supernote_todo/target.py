@@ -11,8 +11,9 @@ be rebuilt with :meth:`Target.recover` instead of duplicating everything.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 FIELDS = ("title", "body", "due", "completed")
 
@@ -64,3 +65,20 @@ class Target:
     def recover(self) -> dict[str, dict]:
         """{supernote id: {"list": ..., "id": ...}} for tasks made by this tool."""
         return {}
+
+    # -- long-running (watch) support ---------------------------------------
+
+    def refresh(self) -> None:
+        """Forget anything cached, so the next pass sees the current state."""
+
+    def on_change(self, callback: Callable[[], None]) -> bool:
+        """Call ``callback`` whenever tasks change on this side.
+
+        Returns False when the target cannot notify, in which case the watcher
+        falls back to periodic full passes.
+        """
+        return False
+
+    def idle(self, seconds: float) -> None:
+        """Wait, while letting change notifications arrive."""
+        time.sleep(seconds)

@@ -27,6 +27,11 @@ class Stats:
     skipped: int = 0
     errors: list = field(default_factory=list)
 
+    @property
+    def changed(self) -> bool:
+        return bool(self.created or self.updated or self.completed_back
+                    or self.deleted or self.errors)
+
     def summary(self) -> str:
         parts = [
             f"{self.created} yeni",
@@ -107,6 +112,7 @@ class Syncer:
         if self.sn.truncated:
             self.log("Uyarı: Supernote hesabın yalnızca bir kısmını döndürdü; "
                      "silme işlemleri bu tur atlanacak.")
+        self.target.refresh()
         self._lists = self.target.lists()
         if not self.state["tasks"]:
             # A lost state file must not turn into a second copy of everything.
