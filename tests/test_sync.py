@@ -5,7 +5,7 @@ from datetime import datetime
 
 import pytest
 
-from supernote_todo.mstodo import ToDoError, ToDoNotFound
+from supernote_todo.mstodo import MicrosoftTarget, ToDoError, ToDoNotFound
 from supernote_todo.supernote import (SupernoteList, decode_source, parse_task,
                                       password_digest, token_expiry)
 from supernote_todo.sync import Syncer
@@ -37,6 +37,7 @@ class FakeSupernote:
 
     def complete(self, task):
         self.completed.append(task.id)
+        next(r for r in self.rows if r["taskId"] == task.id)["status"] = "completed"
 
 
 class FakeToDo:
@@ -82,7 +83,7 @@ CONFIG = {"list_mode": "mirror", "list_prefix": "", "target_list": "Supernote",
 
 def run(sn, todo, state, **overrides):
     config = dict(CONFIG, **overrides)
-    return Syncer(sn, todo, config, state, log=lambda _: None).run()
+    return Syncer(sn, MicrosoftTarget(todo), config, state, log=lambda _: None).run()
 
 
 def fresh_state():
@@ -207,7 +208,7 @@ def test_dry_run_changes_nothing():
     sn = FakeSupernote([row("a", "Bir")])
     todo, state = FakeToDo(), fresh_state()
     config = dict(CONFIG)
-    Syncer(sn, todo, config, state, dry_run=True, log=lambda _: None).run()
+    Syncer(sn, MicrosoftTarget(todo), config, state, dry_run=True, log=lambda _: None).run()
     assert todo.calls == [] and state["tasks"] == {} and len(todo.lists_) == 1
 
 

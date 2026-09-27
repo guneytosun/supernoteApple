@@ -1,21 +1,19 @@
-"""One sync pass: Supernote To-Do -> Microsoft To Do.
+"""One sync pass: Supernote To-Do -> a target (Apple Reminders, Microsoft To Do).
 
 Supernote is the source of truth for a task's title, note, due date and
 completion. A snapshot of what was last sent is kept per task in the state
-file, so a task is only patched when it changed on Supernote -- edits made in
-Microsoft To Do survive until the same task is edited on the tablet again.
+file, so a task is only touched when it changed on Supernote -- edits made on
+the other side survive until the same task is edited on the tablet again.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
 from typing import Callable, Optional
 
-from .mstodo import ToDoClient, ToDoError, ToDoNotFound, due_field
 from .supernote import SupernoteClient, SupernoteError, SupernoteTask
+from .target import FIELDS, Target, TargetError, TargetNotFound
 
-APP_NAME = "Supernote"
 INBOX_KEY = "__inbox__"
 SINGLE_KEY = "__single__"
 
@@ -43,7 +41,7 @@ class Stats:
 
 
 def desired_fields(task: SupernoteTask) -> dict:
-    """What the Microsoft To Do copy of this task should look like."""
+    """What the copy of this task should look like on the other side."""
     body = task.detail
     if task.source:
         body = f"{body}\n\nNot: {task.source}" if body else f"Not: {task.source}"
@@ -51,46 +49,29 @@ def desired_fields(task: SupernoteTask) -> dict:
         "title": task.title or "(başlıksız görev)",
         "body": body,
         "due": task.due.isoformat() if task.due else None,
-        "status": "completed" if task.completed else "notStarted",
+        "completed": task.completed,
     }
 
 
-def graph_payload(fields: dict, keys) -> dict:
-    """Translate the snapshot format into a Graph todoTask body."""
-    payload: dict = {}
-    for key in keys:
-        value = fields[key]
-        if key == "title":
-            payload["title"] = value
-        elif key == "body":
-            payload["body"] = {"content": value or "", "contentType": "text"}
-        elif key == "due":
-            payload["dueDateTime"] = due_field(date.fromisoformat(value)) if value else None
-        elif key == "status":
-            payload["status"] = value
-    return payload
-
-
 class Syncer:
-    def __init__(self, supernote: SupernoteClient, todo: ToDoClient, config: dict,
+    def __init__(self, supernote: SupernoteClient, target: Target, config: dict,
                  state: dict, dry_run: bool = False,
                  log: Callable[[str], None] = print):
         self.sn = supernote
-        self.todo = todo
+        self.target = target
         self.config = config
         self.state = state
         self.dry_run = dry_run
         self.log = log
         self.stats = Stats()
-        self._ms_lists: list[dict] = []
-        self._ms_tasks: dict[str, dict[str, dict]] = {}
+        self._lists: list = []
 
     # -- lists ---------------------------------------------------------------
 
-    def _target(self, task: SupernoteTask, sn_names: dict[str, str]) -> tuple[str, Optional[str]]:
-        """(state key, list name to create) for the list this task belongs in.
+    def _destination(self, task: SupernoteTask, sn_names: dict[str, str]) -> tuple[str, Optional[str]]:
+        """(state key, list name) for the list this task belongs in.
 
-        A name of None means Microsoft To Do's default "Tasks" list.
+        A name of None means the target's default list.
         """
         if self.config.get("list_mode") == "single":
             return SINGLE_KEY, self.config.get("target_list") or "Supernote"
@@ -99,47 +80,24 @@ class Syncer:
         return INBOX_KEY, None
 
     def _resolve_list(self, key: str, name: Optional[str]) -> str:
-        known = {entry["id"] for entry in self._ms_lists}
         cached = self.state["lists"].get(key)
-        if cached in known:
+        if cached in {l.id for l in self._lists}:
             return cached
         if name is None:
-            match = next((l for l in self._ms_lists if l.get("wellknownListName") == "defaultList"), None)
+            match = next((l for l in self._lists if l.is_default), None)
+            if match is None:
+                raise TargetError(f"{self.target.name} içinde varsayılan liste bulunamadı.")
         else:
-            match = next((l for l in self._ms_lists if l.get("displayName") == name), None)
+            match = next((l for l in self._lists if l.name == name), None)
         if match is None:
             if self.dry_run:
                 self.log(f"  [deneme] '{name}' listesi oluşturulacak")
                 return f"dry-run:{key}"
-            self.log(f"  Microsoft To Do'da '{name}' listesi oluşturuluyor")
-            match = self.todo.create_list(name)
-            self._ms_lists.append(match)
-        self.state["lists"][key] = match["id"]
-        return match["id"]
-
-    def _ms_task_index(self, list_id: str) -> dict[str, dict]:
-        if list_id not in self._ms_tasks:
-            self._ms_tasks[list_id] = {t["id"]: t for t in self.todo.tasks(list_id)}
-        return self._ms_tasks[list_id]
-
-    def _recover_state(self) -> None:
-        """Re-link tasks created by an earlier run whose state file was lost.
-
-        Every task this tool creates carries a linked resource naming the
-        Supernote task id, so nothing is duplicated after a reinstall.
-        """
-        for ms_list in self._ms_lists:
-            try:
-                tasks = self.todo.tasks(ms_list["id"], expand_links=True)
-            except ToDoError as exc:
-                self.log(f"  Uyarı: eski eşleşmeler aranamadı ({exc})")
-                return
-            for task in tasks:
-                for link in task.get("linkedResources") or []:
-                    if link.get("applicationName") == APP_NAME and link.get("externalId"):
-                        self.state["tasks"][link["externalId"]] = {
-                            "list": ms_list["id"], "id": task["id"], "synced": {},
-                        }
+            self.log(f"  {self.target.name} içinde '{name}' listesi oluşturuluyor")
+            match = self.target.create_list(name)
+            self._lists.append(match)
+        self.state["lists"][key] = match.id
+        return match.id
 
     # -- the pass ------------------------------------------------------------
 
@@ -149,9 +107,14 @@ class Syncer:
         if self.sn.truncated:
             self.log("Uyarı: Supernote hesabın yalnızca bir kısmını döndürdü; "
                      "silme işlemleri bu tur atlanacak.")
-        self._ms_lists = self.todo.lists()
+        self._lists = self.target.lists()
         if not self.state["tasks"]:
-            self._recover_state()
+            # A lost state file must not turn into a second copy of everything.
+            try:
+                for sn_id, link in self.target.recover().items():
+                    self.state["tasks"][sn_id] = dict(link, synced={})
+            except TargetError as exc:
+                self.log(f"  Uyarı: önceki eşleşmeler aranamadı ({exc})")
 
         seen: set[str] = set()
         for task in sn_tasks:
@@ -160,7 +123,7 @@ class Syncer:
             seen.add(task.id)
             try:
                 self._sync_task(task, sn_names)
-            except (ToDoError, SupernoteError) as exc:
+            except (TargetError, SupernoteError) as exc:
                 self.stats.errors.append(f"{task.title!r}: {exc}")
                 self.log(f"  HATA '{task.title}': {exc}")
 
@@ -176,67 +139,55 @@ class Syncer:
             if task.completed and not self.config.get("include_completed"):
                 self.stats.skipped += 1
                 return
-            key, name = self._target(task, sn_names)
-            list_id = self._resolve_list(key, name)
+            list_id = self._resolve_list(*self._destination(task, sn_names))
             self.log(f"+ {want['title']}")
-            if self.dry_run:
-                self.stats.created += 1
-                return
-            payload = graph_payload(want, [k for k in want if want[k] is not None])
-            payload["linkedResources"] = [{
-                "applicationName": APP_NAME,
-                "externalId": task.id,
-                "displayName": "Supernote To-Do",
-            }]
-            created = self.todo.create_task(list_id, payload)
-            self.state["tasks"][task.id] = {"list": list_id, "id": created["id"], "synced": want}
+            if not self.dry_run:
+                task_id = self.target.create(list_id, task.id, want)
+                self.state["tasks"][task.id] = {"list": list_id, "id": task_id, "synced": want}
             self.stats.created += 1
             return
 
         if record.get("gone"):
             return
 
-        changed = [k for k in want if want[k] != record["synced"].get(k)]
-        if changed:
-            self.log(f"~ {want['title']} ({', '.join(changed)})")
-            if self.dry_run:
-                self.stats.updated += 1
-                return
-            try:
-                self.todo.update_task(record["list"], record["id"], graph_payload(want, changed))
-            except ToDoNotFound:
-                # Deleted in Microsoft To Do on purpose: do not bring it back.
-                record["gone"] = True
-                return
-            record["synced"] = want
+        changes = {k: want[k] for k in FIELDS if want[k] != record["synced"].get(k)}
+        if changes:
+            self.log(f"~ {want['title']} ({', '.join(changes)})")
+            if not self.dry_run:
+                try:
+                    self.target.update(record["list"], record["id"], task.id, changes)
+                except TargetNotFound:
+                    # Deleted on the other side on purpose: do not bring it back.
+                    record["gone"] = True
+                    return
+                record["synced"] = want
             self.stats.updated += 1
             return
 
         if self.config.get("complete_back") and not task.completed:
-            ms_task = self._ms_task_index(record["list"]).get(record["id"])
-            if ms_task is None:
+            done = self.target.is_completed(record["list"], record["id"], task.id)
+            if done is None:
                 record["gone"] = True
-            elif ms_task.get("status") == "completed":
+            elif done:
                 self.log(f"✓ {want['title']} (Supernote'ta tamamlandı olarak işaretleniyor)")
-                self.stats.completed_back += 1
                 if not self.dry_run:
                     self.sn.complete(task)
-                    record["synced"] = dict(want, status="completed")
+                    record["synced"] = dict(want, completed=True)
+                self.stats.completed_back += 1
 
     def _handle_removed(self, seen: set[str]) -> None:
         for sn_id in [i for i in self.state["tasks"] if i not in seen]:
             record = self.state["tasks"][sn_id]
             if self.config.get("delete_removed") and not record.get("gone"):
                 self.log(f"- {record.get('synced', {}).get('title', sn_id)}")
+                if not self.dry_run:
+                    try:
+                        self.target.delete(record["list"], record["id"], sn_id)
+                    except TargetNotFound:
+                        pass
+                    except TargetError as exc:
+                        self.stats.errors.append(str(exc))
+                        continue
                 self.stats.deleted += 1
-                if self.dry_run:
-                    continue
-                try:
-                    self.todo.delete_task(record["list"], record["id"])
-                except ToDoNotFound:
-                    pass
-                except ToDoError as exc:
-                    self.stats.errors.append(str(exc))
-                    continue
             if not self.dry_run:
                 del self.state["tasks"][sn_id]

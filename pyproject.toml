@@ -5,12 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "supernote-todo"
 version = "0.1.0"
-description = "Supernote To-Do görevlerini Microsoft To Do'ya aktarır"
+description = "Supernote To-Do görevlerini Apple Reminders veya Microsoft To Do'ya aktarır"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "requests>=2.28",
     "msal>=1.24",
+    "pyobjc-framework-EventKit>=9; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]

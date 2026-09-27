@@ -11,9 +11,10 @@ from datetime import datetime, timezone
 from . import __version__
 from .config import (config_path, load_config, load_state, ms_cache_path,
                      save_config, save_state)
-from .mstodo import MicrosoftAuth, ToDoClient, ToDoError
+from .mstodo import MicrosoftAuth, MicrosoftTarget, ToDoClient
 from .supernote import SupernoteClient, SupernoteError, token_expiry
 from .sync import Syncer
+from .target import Target, TargetError
 
 
 def _ask(prompt: str, default: str = "") -> str:
@@ -27,31 +28,38 @@ def _yes_no(prompt: str, default: bool) -> bool:
     return answer.startswith(("e", "y"))
 
 
-def _todo_client(config: dict) -> ToDoClient:
-    auth = MicrosoftAuth(config["ms_client_id"], config["ms_authority"], ms_cache_path())
-    return ToDoClient(auth.token)
+def make_target(config: dict) -> Target:
+    if config.get("target") == "microsoft":
+        auth = MicrosoftAuth(config["ms_client_id"], config["ms_authority"], ms_cache_path())
+        return MicrosoftTarget(ToDoClient(auth.token))
+    from .reminders import RemindersTarget
+    return RemindersTarget()
 
 
 def cmd_setup(args, config) -> int:
     print("Ayarlar (Enter ile mevcut değeri koruyun)\n")
-    config["ms_client_id"] = _ask("Microsoft uygulama (client) ID", config["ms_client_id"])
-    config["ms_authority"] = _ask(
-        "Hesap türü: consumers (kişisel) / organizations (iş-okul) / common",
-        config["ms_authority"])
+    target = _ask("Hedef: reminders (Apple Anımsatıcılar) / microsoft (Microsoft To Do)",
+                  config["target"])
+    config["target"] = "microsoft" if target.startswith("m") else "reminders"
+    if config["target"] == "microsoft":
+        config["ms_client_id"] = _ask("Microsoft uygulama (client) ID", config["ms_client_id"])
+        config["ms_authority"] = _ask(
+            "Hesap türü: consumers (kişisel) / organizations (iş-okul) / common",
+            config["ms_authority"])
     mode = _ask("Liste düzeni: mirror (her Supernote listesi ayrı) / single (tek liste)",
                 config["list_mode"])
     config["list_mode"] = "single" if mode.startswith("s") else "mirror"
     if config["list_mode"] == "single":
-        config["target_list"] = _ask("Hedef Microsoft To Do listesi", config["target_list"])
+        config["target_list"] = _ask("Hedef liste adı", config["target_list"])
     else:
         config["list_prefix"] = _ask("Liste adı öneki (boş bırakılabilir)", config["list_prefix"])
     config["include_completed"] = _yes_no(
         "Supernote'ta zaten tamamlanmış görevler de aktarılsın mı?", config["include_completed"])
     config["complete_back"] = _yes_no(
-        "Microsoft To Do'da tamamlanan görevler Supernote'ta da tamamlansın mı?",
+        "Hedefte tamamlanan görevler Supernote'ta da tamamlansın mı?",
         config["complete_back"])
     config["delete_removed"] = _yes_no(
-        "Supernote'tan silinen görevler Microsoft To Do'dan da silinsin mi?",
+        "Supernote'tan silinen görevler hedeften de silinsin mi?",
         config["delete_removed"])
     save_config(config)
     print(f"\nKaydedildi: {config_path()}")
@@ -113,29 +121,31 @@ def cmd_status(args, config) -> int:
             print(f"  Hata: {exc}")
 
     try:
-        todo = _todo_client(config)
-        ms_lists = todo.lists()
-        print(f"Microsoft To Do: {len(ms_lists)} liste")
-        for l in ms_lists:
-            print(f"   - {l['displayName']}")
-    except ToDoError as exc:
-        print(f"Microsoft To Do: {exc}")
+        target = make_target(config)
+        target_lists = target.lists()
+        print(f"{target.name}: {len(target_lists)} liste")
+        for l in target_lists:
+            print(f"   - {l.name}{' (varsayılan)' if l.is_default else ''}")
+    except TargetError as exc:
+        print(f"Hedef: {exc}")
     return 0
 
 
 def run_sync(config, dry_run: bool) -> int:
-    state = load_state()
-    syncer = Syncer(SupernoteClient(config["supernote_token"]), _todo_client(config),
+    state = load_state(config["target"])
+    syncer = Syncer(SupernoteClient(config["supernote_token"]), make_target(config),
                     config, state, dry_run=dry_run)
     stats = syncer.run()
     if not dry_run:
-        save_state(state)
+        save_state(config["target"], state)
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     print(f"[{stamp}] {'(deneme) ' if dry_run else ''}{stats.summary()}")
     return 1 if stats.errors else 0
 
 
 def cmd_sync(args, config) -> int:
+    if args.target:
+        config["target"] = args.target
     for key in ("include_completed", "complete_back", "delete_removed"):
         if getattr(args, key):
             config[key] = True
@@ -145,7 +155,7 @@ def cmd_sync(args, config) -> int:
     while True:
         try:
             run_sync(config, args.dry_run)
-        except (SupernoteError, ToDoError) as exc:
+        except (SupernoteError, TargetError) as exc:
             print(f"Hata: {exc}", file=sys.stderr)
         time.sleep(args.watch * 60)
 
@@ -153,7 +163,8 @@ def cmd_sync(args, config) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="supernote-todo",
-        description="Supernote To-Do görevlerini Microsoft To Do'ya aktarır.")
+        description="Supernote To-Do görevlerini Apple Anımsatıcılar'a "
+                    "(veya Microsoft To Do'ya) aktarır.")
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -163,19 +174,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--email")
     p.set_defaults(func=cmd_login_supernote)
 
-    sub.add_parser("login-microsoft", help="Microsoft hesabına giriş yap") \
+    sub.add_parser("login-microsoft", help="Microsoft hesabına giriş yap (yalnızca Microsoft hedefi)") \
         .set_defaults(func=cmd_login_microsoft)
     sub.add_parser("status", help="Bağlantıları ve listeleri göster").set_defaults(func=cmd_status)
 
-    p = sub.add_parser("sync", help="Görevleri Microsoft To Do'ya aktar")
+    p = sub.add_parser("sync", help="Görevleri hedefe aktar")
+    p.add_argument("--target", choices=["reminders", "microsoft"],
+                   help="Bu çalıştırma için hedefi değiştir")
     p.add_argument("--dry-run", action="store_true", help="Hiçbir şeyi değiştirmeden ne yapılacağını göster")
     p.add_argument("--watch", type=int, metavar="DAKIKA", help="Sürekli çalış, N dakikada bir senkronize et")
     p.add_argument("--include-completed", action="store_true",
                    help="Tamamlanmış görevleri de aktar")
     p.add_argument("--complete-back", action="store_true",
-                   help="Microsoft To Do'da tamamlananları Supernote'ta da tamamla")
+                   help="Hedefte tamamlananları Supernote'ta da tamamla")
     p.add_argument("--delete-removed", action="store_true",
-                   help="Supernote'tan silinenleri Microsoft To Do'dan da sil")
+                   help="Supernote'tan silinenleri hedeften de sil")
     p.set_defaults(func=cmd_sync)
     return parser
 
@@ -185,7 +198,7 @@ def main(argv=None) -> int:
     config = load_config()
     try:
         return args.func(args, config)
-    except (SupernoteError, ToDoError) as exc:
+    except (SupernoteError, TargetError) as exc:
         print(f"Hata: {exc}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:

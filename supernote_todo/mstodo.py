@@ -11,21 +11,16 @@ import msal
 import requests
 
 from .config import write_private
+from .target import Target, TargetAuthError, TargetError, TargetList, TargetNotFound
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 SCOPES = ["Tasks.ReadWrite"]
 
 
-class ToDoError(Exception):
-    pass
-
-
-class ToDoAuthError(ToDoError):
-    pass
-
-
-class ToDoNotFound(ToDoError):
-    pass
+ToDoError = TargetError
+ToDoAuthError = TargetAuthError
+ToDoNotFound = TargetNotFound
+APP_NAME = "Supernote"
 
 
 class MicrosoftAuth:
@@ -136,7 +131,72 @@ class ToDoClient:
         self._call("DELETE", f"/me/todo/lists/{list_id}/tasks/{task_id}")
 
 
-def due_field(due: Optional[date]) -> Optional[dict]:
-    if due is None:
+def due_field(due: Optional[str]) -> Optional[dict]:
+    if not due:
         return None
-    return {"dateTime": f"{due.isoformat()}T00:00:00.0000000", "timeZone": "UTC"}
+    return {"dateTime": f"{date.fromisoformat(due).isoformat()}T00:00:00.0000000",
+            "timeZone": "UTC"}
+
+
+def graph_payload(changes: dict) -> dict:
+    """Neutral task fields -> a Graph todoTask body."""
+    payload: dict = {}
+    if "title" in changes:
+        payload["title"] = changes["title"]
+    if "body" in changes:
+        payload["body"] = {"content": changes["body"] or "", "contentType": "text"}
+    if "due" in changes:
+        payload["dueDateTime"] = due_field(changes["due"])
+    if "completed" in changes:
+        payload["status"] = "completed" if changes["completed"] else "notStarted"
+    return payload
+
+
+class MicrosoftTarget(Target):
+    name = "Microsoft To Do"
+
+    def __init__(self, client: ToDoClient):
+        self.client = client
+        self._tasks: dict[str, dict[str, dict]] = {}
+
+    def lists(self) -> list[TargetList]:
+        return [TargetList(id=l["id"], name=l.get("displayName", ""),
+                           is_default=l.get("wellknownListName") == "defaultList")
+                for l in self.client.lists()]
+
+    def create_list(self, name: str) -> TargetList:
+        created = self.client.create_list(name)
+        return TargetList(id=created["id"], name=name)
+
+    def create(self, list_id: str, sn_id: str, fields: dict) -> str:
+        payload = graph_payload({k: v for k, v in fields.items() if v is not None})
+        payload["linkedResources"] = [{
+            "applicationName": APP_NAME,
+            "externalId": sn_id,
+            "displayName": "Supernote To-Do",
+        }]
+        return self.client.create_task(list_id, payload)["id"]
+
+    def update(self, list_id: str, task_id: str, sn_id: str, changes: dict) -> None:
+        self.client.update_task(list_id, task_id, graph_payload(changes))
+
+    def is_completed(self, list_id: str, task_id: str, sn_id: str) -> Optional[bool]:
+        if list_id not in self._tasks:
+            try:
+                self._tasks[list_id] = {t["id"]: t for t in self.client.tasks(list_id)}
+            except TargetNotFound:
+                self._tasks[list_id] = {}
+        task = self._tasks[list_id].get(task_id)
+        return None if task is None else task.get("status") == "completed"
+
+    def delete(self, list_id: str, task_id: str, sn_id: str) -> None:
+        self.client.delete_task(list_id, task_id)
+
+    def recover(self) -> dict[str, dict]:
+        found: dict[str, dict] = {}
+        for ms_list in self.client.lists():
+            for task in self.client.tasks(ms_list["id"], expand_links=True):
+                for link in task.get("linkedResources") or []:
+                    if link.get("applicationName") == APP_NAME and link.get("externalId"):
+                        found[link["externalId"]] = {"list": ms_list["id"], "id": task["id"]}
+        return found
