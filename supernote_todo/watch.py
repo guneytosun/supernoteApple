@@ -39,7 +39,8 @@ class Watcher:
     def __init__(self, supernote: SupernoteClient, target: Target,
                  run_pass: Callable[[], Stats], interval: float = 30.0,
                  full_every: float = 600.0, log: Callable[[str], None] = print,
-                 clock: Callable[[], float] = time.monotonic):
+                 clock: Callable[[], float] = time.monotonic,
+                 before_poll: Optional[Callable[[], None]] = None):
         self.sn = supernote
         self.target = target
         self.run_pass = run_pass
@@ -47,6 +48,7 @@ class Watcher:
         self.full_every = full_every
         self.log = log
         self.clock = clock
+        self.before_poll = before_poll
 
         self._last_fp: Optional[str] = None
         self._dirty = True  # always start with a full pass
@@ -80,6 +82,8 @@ class Watcher:
 
         if now >= self._next_poll:
             self._next_poll = now + self.interval
+            if self.before_poll:
+                self.before_poll()
             try:
                 fp = fingerprint(self.sn.tasks())
             except (SupernoteError, TargetError) as exc:

@@ -96,3 +96,15 @@ def test_auth_error_waits_long():
     sn.error = SupernoteAuthError("expired")
     tick(watcher, clock, 1000)
     assert sn.polls == 1
+
+
+def test_new_login_is_picked_up_without_restart():
+    clock, sn = Clock(), FakeSupernote()
+    sn.error = SupernoteAuthError("expired")
+    tokens = []
+    watcher = Watcher(sn, LiveTarget(), lambda: Stats(), log=lambda _: None, clock=clock,
+                      before_poll=lambda: tokens.append(clock.now))
+    tick(watcher, clock, 5)
+    sn.error = None  # the user logged in again
+    tick(watcher, clock, 1900)
+    assert len(tokens) >= 2 and watcher.passes == 1
