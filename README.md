@@ -37,15 +37,16 @@ hedefi](#microsoft-to-do-hedefi)); bu bir Azure uygulama kaydı gerektirir.
 git clone https://github.com/guneytosun/supernoteApple.git
 cd supernoteApple
 python3 -m venv ~/.venvs/supernote-todo
-~/.venvs/supernote-todo/bin/pip install --upgrade pip
-~/.venvs/supernote-todo/bin/pip install .
+~/.venvs/supernote-todo/bin/python -m pip install .
 echo 'export PATH="$HOME/.venvs/supernote-todo/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-Kurulum hata verdiyse (`Failed to build pyobjc-core`) ya da `command not found:
-supernote-todo` görüyorsan: bu klasörde `git pull` yapıp yukarıdaki pip
-komutlarını tekrar çalıştır. `supernote-todo`, `PATH` ayarlanmadan önce
+Güncellemek için: `git pull && ~/.venvs/supernote-todo/bin/python -m pip install
+--force-reinstall --no-deps .` (bağımlılıklar değiştiyse `--no-deps`'i çıkar).
+Kurulum bozulduysa (`no such file or directory: .../bin/pip`, `Failed to build
+pyobjc-core`) sanal ortamı silip yukarıdaki adımları baştan yap; ayarların ve
+oturumun `~/.config/supernote-todo/` altında durduğu için kaybolmaz. `supernote-todo`, `PATH` ayarlanmadan önce
 `~/.venvs/supernote-todo/bin/supernote-todo` olarak da çağrılabilir.
 
 ## Kullanım
@@ -129,7 +130,7 @@ tail -f ~/Library/Logs/supernote-todo.log   # günlük
 supernote-todo uninstall-app                # durdur ve kaldır
 ```
 
-Kodu güncelledikten sonra (`git pull && pip install .`) `supernote-todo
+Kodu güncelledikten sonra (`git pull && ~/.venvs/supernote-todo/bin/python -m pip install .`) `supernote-todo
 install-app` komutunu tekrar çalıştır.
 
 > **Neden launchd değil?** macOS Anımsatıcılar iznini bir *uygulamaya* verir.
