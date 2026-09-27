@@ -167,6 +167,22 @@ def cmd_watch(args, config) -> int:
     return 0
 
 
+def cmd_install_app(args, config) -> int:
+    from . import macapp
+    try:
+        macapp.install()
+    except (RuntimeError, ValueError) as exc:
+        print(f"Hata: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
+def cmd_uninstall_app(args, config) -> int:
+    from . import macapp
+    macapp.uninstall()
+    return 0
+
+
 def _log(message: str) -> None:
     print(message, flush=True)
 
@@ -200,6 +216,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--delete-removed", action="store_true",
                    help="Supernote'tan silinenleri hedeften de sil")
     p.set_defaults(func=cmd_sync)
+
+    sub.add_parser("install-app", help="macOS: arka planda çalışan uygulamayı kur ve başlat") \
+        .set_defaults(func=cmd_install_app)
+    sub.add_parser("uninstall-app", help="macOS: arka plan uygulamasını durdur ve kaldır") \
+        .set_defaults(func=cmd_uninstall_app)
 
     p = sub.add_parser("watch", help="Sürekli çalış, değişiklikleri hemen aktar")
     p.add_argument("--target", choices=["reminders", "microsoft"],

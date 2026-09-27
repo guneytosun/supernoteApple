@@ -76,9 +76,10 @@ supernote-todo watch              # sürekli çalış, değişiklikleri hemen ak
   olursa bekleme süresi giderek uzar; Supernote oturumu dolduysa 30 dakikada
   bir tekrar denenir.
 
-İlk çalıştırmada macOS, Terminal'in Anımsatıcılar'a erişmesi için izin ister;
-**Tam Erişim**'e izin ver. Yanlışlıkla reddettiysen: Sistem Ayarları →
-Gizlilik ve Güvenlik → Anımsatıcılar → Terminal'i aç.
+Terminal'den ilk çalıştırmada macOS, Terminal'in Anımsatıcılar'a erişmesi için
+izin ister; **Tam Erişim**'e izin ver. Yanlışlıkla reddettiysen: Sistem
+Ayarları → Gizlilik ve Güvenlik → Anımsatıcılar → Terminal'i aç. Arka planda
+çalıştırmak için aşağıdaki `install-app` bölümüne bak.
 
 Örnek çıktı:
 
@@ -103,26 +104,32 @@ Gizlilik ve Güvenlik → Anımsatıcılar → Terminal'i aç.
 | `complete_back` | `--complete-back` | kapalı | Hedefte tamamlanan görevi Supernote'ta da tamamla. |
 | `delete_removed` | `--delete-removed` | kapalı | Supernote'tan silinen görevi hedeften de sil. |
 
-## Otomatik çalıştırma
-
-**macOS (launchd):** `watch` modunu oturum açtığında otomatik başlatır ve
-kapanırsa yeniden başlatır. Önce `supernote-todo sync`'i bir kez Terminal'den
-çalıştırıp her şeyin yolunda olduğunu gör. Sonra
-`examples/com.supernote-todo.sync.plist` dosyasındaki `KULLANICI` kısmını kendi
-kullanıcı adınla değiştir (`whoami`) ve:
+## Arka planda sürekli çalıştırma (macOS)
 
 ```bash
-cp examples/com.supernote-todo.sync.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.supernote-todo.sync.plist
-tail -f /tmp/supernote-todo.log
+supernote-todo install-app
 ```
 
-Durdurmak için `launchctl unload ~/Library/LaunchAgents/com.supernote-todo.sync.plist`.
+Bu komut `~/Applications/Supernote ToDo.app` adında küçük bir uygulama
+oluşturur, onu Giriş Öğeleri'ne ekler ve başlatır. Uygulama Dock'ta görünmez;
+arka planda `supernote-todo watch` çalıştırır ve kapanırsa bir dakika içinde
+yeniden başlatır. İlk açılışta macOS **"Supernote ToDo" Anımsatıcılar'a
+erişmek istiyor** diye sorar; izin ver. Sistem Etkinlikleri'ni (System Events)
+denetleme izni sorarsa ona da izin ver (Giriş Öğeleri'ne eklemek için).
 
-Arka planda çalışan süreç Terminal'in iznini devralmayabilir; macOS bu durumda
-Python için ayrıca Anımsatıcılar izni isteyebilir. Günlükte "erişim izni yok"
-hatası görürsen izni ver ya da bunun yerine bir Terminal penceresinde
-`supernote-todo watch` açık bırak.
+```bash
+tail -f ~/Library/Logs/supernote-todo.log   # günlük
+supernote-todo uninstall-app                # durdur ve kaldır
+```
+
+Kodu güncelledikten sonra (`git pull && pip install .`) `supernote-todo
+install-app` komutunu tekrar çalıştır.
+
+> **Neden launchd değil?** macOS Anımsatıcılar iznini bir *uygulamaya* verir.
+> launchd ile başlatılan bir süreç hiçbir uygulamaya bağlı olmadığı için
+> izin penceresi hiç çıkmadan reddedilir ve Sistem Ayarları'nda da
+> görünmez. Daha önce launchd görevini kurduysan `install-app` onu
+> kendiliğinden kaldırır.
 
 ## Nasıl çalışır / bilinmesi gerekenler
 

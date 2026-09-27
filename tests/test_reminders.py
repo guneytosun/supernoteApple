@@ -94,6 +94,10 @@ class EKReminder(Obj):
 class EKEventStore(Obj):
     granted = True
 
+    @classmethod
+    def authorizationStatusForEntityType_(cls, entity):
+        return 0  # not determined: always go through the request
+
     def init(self):
         self.source = Source()
         self.cals = [EKCalendar("Anımsatıcılar", self.source)]

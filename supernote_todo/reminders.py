@@ -23,6 +23,8 @@ from .target import Target, TargetAuthError, TargetError, TargetList, TargetNotF
 URL_PREFIX = "supernote-todo://task/"
 
 _TIMEOUT = 60
+#: EKAuthorizationStatus: 3 is "authorized" before macOS 14, "fullAccess" after.
+FULL_ACCESS = 3
 
 
 def _load_eventkit():
@@ -74,7 +76,17 @@ class RemindersTarget(Target):
     # -- access --------------------------------------------------------------
 
     def _request_access(self) -> None:
+        """Ask for access, or explain why it cannot be had.
+
+        macOS grants Reminders access per *app*: run from Terminal, the prompt
+        is for Terminal; run by launchd there is no app to ask on behalf of,
+        so the request is refused without a prompt and nothing shows up in
+        System Settings. `supernote-todo install-app` exists for that case.
+        """
         ek, store = self.ek, self.store
+        status = ek.EKEventStore.authorizationStatusForEntityType_(ek.EKEntityTypeReminder)
+        if status == FULL_ACCESS:
+            return
         if hasattr(store, "requestFullAccessToRemindersWithCompletion_"):  # macOS 14+
             granted, *_ = self._wait(store.requestFullAccessToRemindersWithCompletion_)
         else:
@@ -82,9 +94,10 @@ class RemindersTarget(Target):
                 lambda cb: store.requestAccessToEntityType_completion_(ek.EKEntityTypeReminder, cb))
         if not granted:
             raise TargetAuthError(
-                "Anımsatıcılar'a erişim izni yok. Sistem Ayarları → Gizlilik ve Güvenlik → "
-                "Anımsatıcılar altında Terminal'e (veya aracı çalıştıran uygulamaya) "
-                "tam erişim verin."
+                "Anımsatıcılar'a erişim izni yok. Terminal'den çalıştırıyorsanız: Sistem "
+                "Ayarları → Gizlilik ve Güvenlik → Anımsatıcılar → Terminal'i açın. Arka "
+                "planda çalıştırmak için `supernote-todo install-app` kullanın (launchd "
+                "ile çalışan bir süreç bu izni alamaz)."
             )
 
     # -- helpers -------------------------------------------------------------
