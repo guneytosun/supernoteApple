@@ -1,3 +1,4 @@
+import plistlib
 import subprocess
 
 import pytest
@@ -41,17 +42,40 @@ def test_install_builds_signs_and_starts(tmp_path, monkeypatch):
     keys = {c[2] for c in calls if c[0] == "plutil"}
     assert {"NSRemindersFullAccessUsageDescription", "LSUIElement", "CFBundleIdentifier"} <= keys
     assert app == tmp_path / "Applications" / "Supernote ToDo.app"
-    compiled = [c[2] for c in calls if c[0] == "osacompile"]
-    assert compiled == [str(app), str(tmp_path / "Applications" / "Supernote Bildirim.app")]
-    ids = [c[4] for c in calls if c[0] == "plutil" and c[2] == "CFBundleIdentifier"]
-    assert ids == ["com.supernote-todo.agent", "com.supernote-todo.notifier"]
+    notifier = tmp_path / "Applications" / "Supernote Bildirim.app"
+    assert [c[2] for c in calls if c[0] == "osacompile"] == [str(app)]
+    (swiftc,) = [c for c in calls if c[:2] == ["xcrun", "swiftc"]]
+    assert swiftc[4] == str(notifier / "Contents/MacOS/SupernoteBildirim")
+    assert swiftc[5].endswith("main.swift")
+    assert ["codesign", "--force", "--sign", "-", str(notifier)] in calls
+    with (notifier / "Contents/Info.plist").open("rb") as fh:
+        info = plistlib.load(fh)
+    assert info["CFBundleIdentifier"] == "com.supernote-todo.notifier"
+    assert info["CFBundleExecutable"] == "SupernoteBildirim"
+    assert info["SupernoteMessageFile"].endswith("notification.txt")
+    assert info["LSUIElement"] is True
 
 
-def test_notifier_source_opens_reminders_when_clicked(tmp_path):
-    src = macapp.notifier_source(tmp_path / "notification.txt")
-    assert src.isascii()
-    assert 'tell application "Reminders" to activate' in src
-    assert "display notification msg" in src
+def test_notifier_compile_failure_is_not_fatal(tmp_path, monkeypatch):
+    monkeypatch.setattr(macapp.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(macapp, "LAUNCH_AGENT", tmp_path / "none.plist")
+    messages = []
+
+    def run(cmd):
+        if cmd[:2] == ["xcrun", "swiftc"]:
+            return subprocess.CompletedProcess(cmd, 1, "", "no swiftc")
+        return ok(cmd)
+
+    macapp.install("/venv/bin/python", run=run, log=messages.append)
+    assert any("Script Editor" in m for m in messages)
+    assert not (tmp_path / "Applications" / "Supernote Bildirim.app").exists()
+
+
+def test_swift_source_is_shipped():
+    source = macapp.NOTIFIER_SOURCE.read_text(encoding="utf-8")
+    assert "UNUserNotificationCenter" in source
+    assert '"SupernoteMessageFile"' in source
+    assert '"com.apple.reminders"' in source
 
 
 def test_install_stops_on_failure(tmp_path, monkeypatch):

@@ -9,7 +9,9 @@ grant sticks, and starts the watcher as its child, which inherits the grant.
 
 from __future__ import annotations
 
+import plistlib
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,11 +22,13 @@ from .config import home
 
 APP_NAME = "Supernote ToDo"
 BUNDLE_ID = "com.supernote-todo.agent"
-#: A second, tiny applet that only shows notifications. `display
-#: notification` run through osascript is shown as coming from Script Editor
-#: -- and clicking it opens Script Editor. Run inside an applet of our own it
-#: carries that applet's name, and a click opens Reminders instead.
+#: A second, tiny app that only shows notifications. AppleScript's `display
+#: notification` is attributed to Script Editor even from a saved applet (and a
+#: click opens Script Editor), so this one is a small Swift program -- see
+#: notifier.swift -- compiled on the Mac at install time.
 NOTIFIER_NAME = "Supernote Bildirim"
+NOTIFIER_EXE = "SupernoteBildirim"
+NOTIFIER_SOURCE = Path(__file__).with_name("notifier.swift")
 NOTIFIER_ID = "com.supernote-todo.notifier"
 USAGE = "Supernote görevlerini Anımsatıcılar'a aktarmak için."
 LAUNCH_AGENT = Path.home() / "Library/LaunchAgents/com.supernote-todo.sync.plist"
@@ -63,34 +67,6 @@ def applet_source(python: str, log: Path) -> str:
     return f'do shell script "{shell}"\n'
 
 
-def notifier_source(message_file: Path) -> str:
-    """Show the pending message, if there is one; otherwise -- which is what
-    happens when the notification is clicked -- open Reminders.
-
-    Kept ASCII-only: osacompile's handling of non-ASCII source text is not
-    something to rely on. The (Turkish) message itself comes from the file.
-    """
-    text = str(message_file)
-    if '"' in text or "\\" in text or "'" in text:
-        raise ValueError(f"Desteklenmeyen karakter içeren yol: {text}")
-    quoted = shlex.quote(text)
-    return (
-        "on run\n"
-        "\ttry\n"
-        f'\t\tset msg to do shell script "cat {quoted} && rm -f {quoted}"\n'
-        "\ton error\n"
-        '\t\tset msg to ""\n'
-        "\tend try\n"
-        '\tif msg is "" then\n'
-        '\t\ttell application "Reminders" to activate\n'
-        "\telse\n"
-        '\t\tdisplay notification msg with title "Supernote"\n'
-        "\t\tdelay 1\n"
-        "\tend if\n"
-        "end run\n"
-    )
-
-
 def _check(result: subprocess.CompletedProcess, what: str) -> None:
     if result.returncode != 0:
         raise RuntimeError(f"{what} başarısız: {(result.stderr or result.stdout).strip()}")
@@ -122,6 +98,35 @@ def _build_applet(app: Path, source_text: str, bundle_id: str, name: str,
     _check(run(["codesign", "--force", "--deep", "--sign", "-", str(app)]), "İmzalama (codesign)")
 
 
+def notifier_info(message_file: Path) -> dict:
+    return {
+        "CFBundleIdentifier": NOTIFIER_ID,
+        "CFBundleName": NOTIFIER_NAME,
+        "CFBundleDisplayName": NOTIFIER_NAME,
+        "CFBundleExecutable": NOTIFIER_EXE,
+        "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": "1.0",
+        "CFBundleVersion": "1",
+        "LSUIElement": True,  # no Dock icon
+        "SupernoteMessageFile": str(message_file),
+    }
+
+
+def _build_swift_notifier(app: Path, message_file: Path, run: Runner) -> None:
+    if app.exists():
+        shutil.rmtree(app)
+    (app / "Contents/MacOS").mkdir(parents=True)
+    with (app / "Contents/Info.plist").open("wb") as fh:
+        plistlib.dump(notifier_info(message_file), fh)
+    # swiftc wants a file called main.swift for top-level code.
+    build_dir = Path(tempfile.mkdtemp())
+    source = build_dir / "main.swift"
+    shutil.copyfile(NOTIFIER_SOURCE, source)
+    _check(run(["xcrun", "swiftc", "-O", "-o", str(app / "Contents/MacOS" / NOTIFIER_EXE),
+                str(source)]), "Bildirim uygulamasını derleme (swiftc)")
+    _check(run(["codesign", "--force", "--sign", "-", str(app)]), "İmzalama (codesign)")
+
+
 def install(python: str = sys.executable, run: Runner = _run,
             log: Callable[[str], None] = print) -> Path:
     if sys.platform != "darwin" and run is _run:
@@ -141,8 +146,14 @@ def install(python: str = sys.executable, run: Runner = _run,
         ("NSRemindersUsageDescription", "-string", USAGE),
         ("NSRemindersFullAccessUsageDescription", "-string", USAGE),
     ], run)
-    _build_applet(notifier_path(), notifier_source(message_path()), NOTIFIER_ID,
-                  NOTIFIER_NAME, [], run)
+    try:
+        _build_swift_notifier(notifier_path(), message_path(), run)
+    except RuntimeError as exc:
+        # Notifications still work without it, only under Script Editor's name.
+        log(f"Uyarı: bildirim uygulaması derlenemedi ({exc}); bildirimler "
+            "Script Editor adıyla gösterilecek.")
+        if notifier_path().exists():
+            shutil.rmtree(notifier_path())
     log(f"Uygulama oluşturuldu: {app}")
 
     login = run(["osascript", "-e",

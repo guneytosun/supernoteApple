@@ -78,8 +78,10 @@ supernote-todo watch              # sürekli çalış, değişiklikleri hemen ak
   bildirimde macOS "Script Editor" için bildirim izni isteyebilir; izin ver.
 - Supernote'tan yeni görev gelince Mac'te bildirim çıkar (birden fazlaysa tek
   özet bildirim); bildirime tıklayınca Anımsatıcılar açılır. Bildirimleri
-  `install-app`'in kurduğu küçük "Supernote Bildirim" uygulaması gösterir;
-  ilk bildirimde macOS onun için bildirim izni isteyebilir, izin ver.
+  `install-app`'in kurulum sırasında Swift ile derlediği küçük "Supernote
+  Bildirim" uygulaması gösterir (Apple'ın komut satırı geliştirici araçları
+  gerekir; yoksa bildirimler "Script Editor" adıyla çıkar). İlk bildirimde
+  macOS onun için bildirim izni ister, izin ver.
   Kapatmak için `setup`'ta bildirim sorusuna `h` de.
 - Güvenlik ağı olarak her 10 dakikada bir tam senkronizasyon yapılır. Hata
   olursa bekleme süresi giderek uzar. Supernote oturumu dolduysa

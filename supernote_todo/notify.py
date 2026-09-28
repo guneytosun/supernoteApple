@@ -35,9 +35,9 @@ def notify_new_tasks(titles: Sequence[str],
     """Show one notification for the tasks just created. Never raises: a
     notification that cannot be shown must not stop a sync.
 
-    Goes through the notifier applet `install-app` builds, so it is shown as
-    "Supernote Bildirim" and a click opens Reminders; without the applet it
-    falls back to osascript, which macOS shows as Script Editor.
+    Goes through the small notifier app `install-app` builds (notifier.swift),
+    so it is shown as "Supernote Bildirim" and a click opens Reminders;
+    without it, falls back to osascript, which macOS shows as Script Editor.
     """
     if not titles or (sys.platform != "darwin" and run is subprocess.run):
         return

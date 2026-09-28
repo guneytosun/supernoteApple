@@ -32,3 +32,6 @@ supernote-todo = "supernote_todo.cli:main"
 
 [tool.setuptools]
 packages = ["supernote_todo"]
+
+[tool.setuptools.package-data]
+supernote_todo = ["notifier.swift"]
