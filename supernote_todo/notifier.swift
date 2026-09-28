@@ -21,6 +21,7 @@ final class Notifier: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
         center.delegate = self
 
         guard let text = takeMessage() else {
+            NSLog("Supernote Bildirim: bekleyen mesaj yok, Anımsatıcılar açılıyor")
             // Probably started by a click; the click itself also arrives as
             // didReceive below, which may get there first.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -30,7 +31,8 @@ final class Notifier: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
             return
         }
 
-        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+            NSLog("Supernote Bildirim: izin=\(granted) hata=\(String(describing: error))")
             guard granted else {
                 DispatchQueue.main.async { NSApp.terminate(nil) }
                 return
@@ -41,7 +43,8 @@ final class Notifier: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
             content.sound = UNNotificationSound.default
             let request = UNNotificationRequest(identifier: UUID().uuidString,
                                                 content: content, trigger: nil)
-            center.add(request) { _ in
+            center.add(request) { error in
+                NSLog("Supernote Bildirim: gönderildi, hata=\(String(describing: error))")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { NSApp.terminate(nil) }
             }
         }
